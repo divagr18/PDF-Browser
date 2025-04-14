@@ -1,0 +1,145 @@
+# --- Python ---
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.so
+.env
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# Usually these files are written by a CI, but they should be ignored if needed.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Environments
+.env # Your environment variables (API keys!)
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Django ---
+# Default SQLite database
+db.sqlite3
+db.sqlite3-journal
+
+# User-uploaded files (MEDIA_ROOT)
+media/
+
+# Static files (collected by collectstatic)
+# Note: Some deployment strategies might require committing this.
+# Usually, it's better to run collectstatic during deployment.
+staticfiles/
+assets/
+
+# Session files (if using file-based sessions)
+django_sessions/
+
+# Log files
+*.log
+logs/
+__pycache__
+# --- Project Specific ---
+# Vector Store directory
+vector_stores/
+
+# Celery beat schedule file (if using Celery Beat)
+celerybeat-schedule
+celerybeat.pid
+
+# --- IDE / Editor Files ---
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# PyCharm
+.idea/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+
+# Vim
+*.swp
+*.swo
+
+# --- Operating System Files ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# --- Other ---
+# dotenv environment variables file
+.env.*
+
+# Sass cache files
+.sass-cache/
+
+# Node dependencies (if you ever add frontend build tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json # Often committed, but can be ignored if using only yarn.lock or similar
+yarn.lock # Often committed

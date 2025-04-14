@@ -1,0 +1,276 @@
+<!-- rag_app/templates/rag_app/upload_pdf.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload PDF & Chat</title>
+    <style>
+       body { font-family: sans-serif; margin: 20px; }
+        .container { max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="file"] { display: block; }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .message { margin-top: 20px; padding: 10px; border-radius: 4px; }
+        .message.success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message.error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        #processing-indicator { display: none; color: #ffc107; margin-top: 15px; }
+        .message.info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        #processing-indicator-async { display: none; color: #ffc107; margin-top: 15px; }
+    </style>
+    {% if is_processing %}
+    <meta name="task-id" content="{{ request.session.processing_task_id }}">
+    {% endif %}
+</head>
+<body>
+    <div class="container">
+        <h1>Upload PDF for Q&A</h1>
+
+        {% if message %}
+            <div class="message {{ message_type }}">
+                {{ message }}
+            </div>
+        {% endif %}
+
+        <!-- Processing Indicator (for async) -->
+        <div id="processing-indicator-async">
+            Processing PDF: <span id="processing-status">Starting...</span>
+        </div>
+
+
+        {% if not processed_collection_name and not is_processing %} <!-- Show upload form only if not processed and not currently processing -->
+            <form method="post" enctype="multipart/form-data" id="upload-form">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="id_pdf_file">Select PDF file:</label>
+                    {{ form.pdf_file }}
+                    {% if form.pdf_file.errors %}
+                        <div style="color: red; font-size: 0.8em;">
+                            {% for error in form.pdf_file.errors %} {{ error }} {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <button type="submit" id="upload-button">Upload and Process</button>
+                <!-- Sync processing indicator removed -->
+            </form>
+        {% elif processed_collection_name %} <!-- Show info that PDF is ready -->
+             <p>Ready to answer questions about: <strong>{{ uploaded_pdf_name }}</strong></p>
+             <form method="post" action="{% url 'clear_session' %}">
+                 {% csrf_token %}
+                 <input type="hidden" name="clear" value="1"> <!-- Add hidden input for clear view -->
+                 <button type="submit">Upload a Different PDF</button>
+             </form>
+        {% endif %}
+
+
+        <!-- Chat interface -->
+        {% if processed_collection_name %}
+            <div id="chat-interface" style="margin-top: 30px;">
+                 <h2>Ask Questions about: {{ uploaded_pdf_name }}</h2>
+                 <div id="chat-history" style="height: 300px; border: 1px solid #ccc; overflow-y: scroll; padding: 10px; margin-bottom: 10px; background-color: #f9f9f9;">
+                     <!-- Chat messages will appear here -->
+                 </div>
+                 <form id="query-form">
+                     <!-- Get CSRF token for AJAX POST requests -->
+                     {% csrf_token %}
+                     <input type="text" id="user-query" placeholder="Ask your question..." style="width: 80%; padding: 8px;" required>
+                     <button type="submit">Send</button>
+                 </form>
+                 <div id="loading-indicator" style="display: none; margin-top: 10px; color: #ffc107;">Thinking...</div>
+            </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        // --- Upload Form Handling (Simpler now) ---
+        const uploadForm = document.getElementById('upload-form');
+        const uploadButton = document.getElementById('upload-button');
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function() {
+                const fileInput = document.querySelector('input[type="file"]');
+                if (fileInput && fileInput.files.length > 0) {
+                     if (uploadButton) uploadButton.disabled = true; // Disable button on submit
+                     // No need for sync indicator here
+                }
+            });
+        }
+
+        // --- Task Status Polling ---
+        const processingIndicatorAsync = document.getElementById('processing-indicator-async');
+        const processingStatusSpan = document.getElementById('processing-status');
+        const metaTaskId = document.querySelector('meta[name="task-id"]');
+        let pollInterval;
+
+        if (metaTaskId && processingIndicatorAsync && processingStatusSpan) {
+            const taskId = metaTaskId.content;
+            processingIndicatorAsync.style.display = 'block'; // Show indicator
+
+            pollInterval = setInterval(async () => {
+                try {
+                    // Construct URL using the base path and task ID
+                    const statusUrl = `/task_status/${taskId}/`; // Adjust if your URL structure is different
+                    const response = await fetch(statusUrl);
+                    if (!response.ok) {
+                        console.error("Failed to fetch task status:", response.statusText);
+                        processingStatusSpan.textContent = `Error fetching status (${response.status}). Retrying...`;
+                        return; // Keep polling on network error maybe?
+                    }
+                    const data = await response.json();
+
+                    console.log("Task Status:", data); // Log status for debugging
+
+                    if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
+                        clearInterval(pollInterval); // Stop polling
+                        processingIndicatorAsync.style.display = 'none'; // Hide indicator
+                        // Reload the page to show the final message and chat interface/upload form
+                        window.location.reload();
+                    } else if (data.status === 'PROGRESS') {
+                        processingStatusSpan.textContent = data.step_status || 'Processing...';
+                    } else {
+                        processingStatusSpan.textContent = data.status || 'Waiting...';
+                    }
+                } catch (error) {
+                    console.error("Error polling task status:", error);
+                    processingStatusSpan.textContent = 'Error checking status. Retrying...';
+                    // Optionally stop polling after too many errors:
+                    // clearInterval(pollInterval);
+                    // processingIndicatorAsync.textContent = 'Error checking status. Please refresh manually.';
+                }
+            }, 3000); // Poll every 3 seconds (adjust as needed)
+        }
+
+
+         // --- Chat Query Script ---
+    const queryForm = document.getElementById('query-form');
+    const queryInput = document.getElementById('user-query');
+    const chatHistory = document.getElementById('chat-history');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const queryUrl = "{% url 'query' %}";
+
+    if (queryForm) {
+        // Function to add messages to chat history (MODIFIED)
+        function addMessageToChat(sender, message, isStream = false, targetElement = null) {
+            const escapedMessage = message.replace(/</g, "<").replace(/>/g, ">");
+
+            if (isStream && targetElement) {
+                // Append chunk to existing message element
+                targetElement.innerHTML += escapedMessage; // Append raw text chunk
+            } else {
+                // Create new message element
+                const messageElement = document.createElement('div');
+                messageElement.style.marginBottom = '10px';
+                messageElement.innerHTML = `<strong>${sender}:</strong> `; // Initial part
+
+                const contentSpan = document.createElement('span'); // Span to hold streamed content
+                contentSpan.innerHTML = escapedMessage;
+                messageElement.appendChild(contentSpan);
+
+                chatHistory.appendChild(messageElement);
+                // Scroll to bottom
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                return contentSpan; // Return the element where content will be streamed
+            }
+             // Scroll to bottom after adding/appending
+             chatHistory.scrollTop = chatHistory.scrollHeight;
+             return null;
+        }
+
+        queryForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const userQuery = queryInput.value.trim();
+            if (!userQuery) return;
+
+            addMessageToChat('You', userQuery);
+            queryInput.value = '';
+            if(loadingIndicator) loadingIndicator.style.display = 'block';
+            queryForm.querySelector('button').disabled = true;
+
+            const csrfToken = queryForm.querySelector('input[name="csrfmiddlewaretoken"]').value;
+
+            // Create placeholder for assistant message
+            const assistantMessageElement = addMessageToChat('Assistant', '', true); // Create empty placeholder
+
+            try {
+                const response = await fetch(queryUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    },
+                    body: JSON.stringify({ query: userQuery })
+                });
+
+                // --- STREAM HANDLING ---
+                if (response.ok && response.body) {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder(); // To decode Uint8Array chunks to text
+                    let reading = true;
+                    let fullResponse = ""; // Store full response if needed
+
+                    while (reading) {
+                        const { done, value } = await reader.read();
+                        if (done) {
+                            reading = false;
+                            break;
+                        }
+                        const chunk = decoder.decode(value, { stream: true });
+
+                        // Check for our custom error prefix
+                        if (chunk.startsWith("STREAM_ERROR:")) {
+                            const errorMessage = chunk.substring("STREAM_ERROR:".length).trim();
+                            console.error("Streaming Error:", errorMessage);
+                            addMessageToChat('Error', errorMessage, false, assistantMessageElement); // Display error
+                            reading = false; // Stop reading on error
+                            // Optionally update the placeholder styling to indicate error
+                            if (assistantMessageElement && assistantMessageElement.parentElement) {
+                                 assistantMessageElement.parentElement.style.color = 'red';
+                            }
+                        } else {
+                            // Append the valid chunk to the assistant message placeholder
+                            addMessageToChat('Assistant', chunk, true, assistantMessageElement);
+                            fullResponse += chunk; // Store chunk if needed
+                        }
+                    }
+                    // Optional: Do something with fullResponse after stream ends successfully
+                    // console.log("Full streamed response:", fullResponse);
+
+                } else {
+                    // Handle non-OK responses (e.g., 4xx, 5xx errors before streaming starts)
+                    let errorMsg = `HTTP error! Status: ${response.status}`;
+                    try {
+                         // Try to parse potential JSON error from server
+                         const errorData = await response.json();
+                         errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // Ignore if response wasn't JSON
+                    }
+                    console.error("Fetch error:", errorMsg);
+                    addMessageToChat('Error', errorMsg, false, assistantMessageElement);
+                     // Optionally update the placeholder styling to indicate error
+                     if (assistantMessageElement && assistantMessageElement.parentElement) {
+                          assistantMessageElement.parentElement.style.color = 'red';
+                     }
+                }
+                // --- END STREAM HANDLING ---
+
+            } catch (error) {
+                // This catches network errors or errors in the fetch setup itself
+                console.error("Fetch setup/network error:", error);
+                addMessageToChat('Error', 'Could not connect to the server or network error.', false, assistantMessageElement);
+                 // Optionally update the placeholder styling to indicate error
+                 if (assistantMessageElement && assistantMessageElement.parentElement) {
+                      assistantMessageElement.parentElement.style.color = 'red';
+                 }
+            } finally {
+                if(loadingIndicator) loadingIndicator.style.display = 'none';
+                queryForm.querySelector('button').disabled = false;
+                queryInput.focus();
+            }
+        });
+    }
+</script>
+</body>
+</html>
